@@ -107,7 +107,7 @@ sys_getpinfo(void)
 {
     struct pstat p;
 
-    if (argint(0, &p) < 0)
+    if (argint(0, (int *)(&p)) < 0)
         return -1;
 
     return getpinfo(&p);
