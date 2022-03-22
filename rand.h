@@ -9,10 +9,22 @@ static unsigned long next = 1;
  * 
  * @return int Generated value
  */
-int rand(void)
+int 
+rand(void)
 {
     next = next * 1103515245U + 12345U;
     return (uint)(next/65536) % 32768;
+}
+
+/**
+ * @brief Seed RNG
+ * 
+ * @param seed Seed to use
+ */
+void
+srand(uint seed)
+{
+    next = seed;
 }
 
 #endif // _RAND_H_
