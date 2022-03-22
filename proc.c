@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "pstat.h"
 
 struct {
   struct spinlock lock;
@@ -463,4 +464,38 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+/**
+ * @brief Function for a program to set its own tickets based on priority
+ * 
+ * @param tickets Number of desired tickets
+ * @return int 0 upon success, -1 on failure
+ */
+int
+settickets(int tickets)
+{
+    if (tickets <= 0)
+        return -1;
+    
+    proc->tickets = tickets;
+    return 0;
+}
+
+/**
+ * @brief List info of running processes - works much like *nix ps
+ * 
+ * @param ps Struct that tracks information for all active processes
+ * @return int Returns 0 on success, -1 on any sort of failure.
+ */
+int
+getpinfo(struct pstat *ps)
+{
+    if (!ps)
+        return -1;
+    int i;
+    for (i = 0; i < NPROC; i++)
+        cprintf("%d. PID: %d | TICKETS: %d | TIME: %d | ACTIVE: %s\n", i, ps->pid[i], ps->tickets[i], ps->ticks[i], ps->inuse[i] ? "TRUE" : "FALSE");
+
+    return 0;
 }
