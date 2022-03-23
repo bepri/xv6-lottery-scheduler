@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 #include "pstat.h"
+#include "rand.h"
 
 struct {
   struct spinlock lock;
@@ -14,6 +15,7 @@ struct {
 } ptable;
 
 static struct proc *initproc;
+// static struct pstat procdata = { {0}, {0}, {0}, {0} };
 
 int nextpid = 1;
 extern void forkret(void);
@@ -48,6 +50,10 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+
+  p->tickets = 1;
+  p->ticks = 0;
+
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -162,6 +168,7 @@ fork(void)
   // lock to force the compiler to emit the np->state write last.
   acquire(&ptable.lock);
   np->state = RUNNABLE;
+  np->tickets = np->parent->tickets;
   release(&ptable.lock);
   
   return pid;
@@ -239,6 +246,10 @@ wait(void)
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
+
+        p->tickets = 0;
+        p->ticks = 0;
+
         release(&ptable.lock);
         return pid;
       }
@@ -266,31 +277,60 @@ wait(void)
 void
 scheduler(void)
 {
-  struct proc *p;
+  struct proc *p = 0;
+  int tickets;
+  uint start, end;
 
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
+    
+    acquire(&tickslock);
+    srand(ticks);
+    release(&tickslock);
+
+    tickets = 0;
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+        if (p->state == RUNNABLE) 
+            tickets += p->tickets;
+    
+    int wall;
+    if (tickets)
+        wall = rand() % tickets + 1;
+    else {
+        release(&ptable.lock);
         continue;
-
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&cpu->scheduler, proc->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      proc = 0;
     }
+
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if (p->state != RUNNABLE) continue;
+
+        wall -= p->tickets;
+        if (wall <= 0) break;
+    }
+    
+    // if (p->state != RUNNABLE) {
+    //     release(&ptable.lock);
+    //     continue;
+    // }
+    
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    proc = p;
+    start = ticks;
+    switchuvm(p);
+    p->state = RUNNING;
+    swtch(&cpu->scheduler, proc->context);
+    switchkvm();
+    end = ticks;
+    proc->ticks += end - start;
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    proc = 0;
     release(&ptable.lock);
 
   }
@@ -491,11 +531,27 @@ settickets(int tickets)
 int
 getpinfo(struct pstat *ps)
 {
-    if (!ps)
-        return -1;
-    int i;
-    for (i = 0; i < NPROC; i++)
-        cprintf("%d. PID: %d | TICKETS: %d | TIME: %d | ACTIVE: %s\n", i, ps->pid[i], ps->tickets[i], ps->ticks[i], ps->inuse[i] ? "TRUE" : "FALSE");
+    // for (i = 0; i < NPROC; i++)
+    //     cprintf("%d. PID: %d | TICKETS: %d | TIME: %d | ACTIVE: %s\n", i, ps->pid[i], ps->tickets[i], ps->ticks[i], ps->inuse[i] ? "TRUE" : "FALSE");
+
+    struct proc *p;
+    int i = 0;
+    acquire(&ptable.lock);
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        switch (p->state) {
+            case SLEEPING:
+            case RUNNING:
+            case RUNNABLE:
+                ps->inuse[i] = 1;
+                ps->pid[i] = p->pid;
+                ps->tickets[i] = p->tickets;
+                ps->ticks[i++] = p->ticks;
+                break;
+            default:
+                break;
+        }
+    }
+    release(&ptable.lock);
 
     return 0;
 }
