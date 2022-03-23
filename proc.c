@@ -311,11 +311,6 @@ scheduler(void)
         if (wall <= 0) break;
     }
     
-    // if (p->state != RUNNABLE) {
-    //     release(&ptable.lock);
-    //     continue;
-    // }
-    
     // Switch to chosen process.  It is the process's job
     // to release ptable.lock and then reacquire it
     // before jumping back to us.
