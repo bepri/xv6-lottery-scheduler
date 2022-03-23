@@ -105,10 +105,10 @@ sys_settickets(void)
 int
 sys_getpinfo(void)
 {
-    struct pstat p;
+    struct pstat *ps;
 
-    if (argint(0, (int *)(&p)) < 0)
+    if (argptr(0, (char **)(&ps), sizeof(struct pstat)) < 0)
         return -1;
 
-    return getpinfo(&p);
+    return getpinfo(ps);
 }
